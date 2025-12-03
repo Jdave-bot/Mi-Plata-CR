@@ -1,0 +1,92 @@
+import React from 'react';
+import { useApp } from '@/Layout';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Lightbulb, Coffee, TrendingUp, ShieldAlert, Percent } from "lucide-react";
+
+export default function TipsPage() {
+    const { t, language } = useApp();
+
+    const tips = [
+        {
+            icon: Coffee,
+            title: { es: "La Regla 50/30/20", en: "The 50/30/20 Rule" },
+            content: { 
+                es: "Intenta dividir tus ingresos: 50% para necesidades (casa, comida), 30% para deseos (entretenimiento, salidas) y 20% para ahorros o deudas.",
+                en: "Try to split your income: 50% for needs (housing, food), 30% for wants (entertainment), and 20% for savings or debt repayment."
+            },
+            color: "text-orange-500 bg-orange-100"
+        },
+        {
+            icon: TrendingUp,
+            title: { es: "Aguinaldo Inteligente", en: "Smart 'Aguinaldo'" },
+            content: { 
+                es: "En Costa Rica, el aguinaldo es clave. Úsalo para pagar deudas con altos intereses primero, luego ahorra una parte antes de gastar en regalos.",
+                en: "In Costa Rica, the 'aguinaldo' (Christmas bonus) is key. Use it to pay off high-interest debt first, then save a portion before spending on gifts."
+            },
+            color: "text-blue-500 bg-blue-100"
+        },
+        {
+            icon: ShieldAlert,
+            title: { es: "Fondo de Emergencia", en: "Emergency Fund" },
+            content: { 
+                es: "Trata de ahorrar al menos 3 a 6 meses de gastos esenciales. Mantén este dinero en una cuenta separada pero accesible.",
+                en: "Aim to save at least 3-6 months of essential expenses. Keep this money in a separate but accessible account."
+            },
+            color: "text-red-500 bg-red-100"
+        },
+        {
+            icon: Percent,
+            title: { es: "Interés Compuesto", en: "Compound Interest" },
+            content: { 
+                es: "Empieza a ahorrar temprano. Incluso pequeñas cantidades en un Certificado de Depósito a Plazo (CDP) pueden crecer significativamente con el tiempo.",
+                en: "Start saving early. Even small amounts in a Certificate of Deposit (CDP) can grow significantly over time."
+            },
+            color: "text-emerald-500 bg-emerald-100"
+        }
+    ];
+
+    return (
+        <div className="space-y-6">
+            <div className="text-center mb-10">
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('tips')}</h1>
+                <p className="text-slate-500 max-w-2xl mx-auto">
+                    {language === 'es' 
+                        ? 'Mejora tu salud financiera con estos consejos prácticos adaptados a la realidad costarricense.' 
+                        : 'Improve your financial health with these practical tips adapted to the Costa Rican context.'}
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {tips.map((tip, index) => (
+                    <Card key={index} className="hover:shadow-lg transition-shadow dark:bg-slate-900">
+                        <CardHeader className="flex flex-row items-center gap-4 pb-2">
+                            <div className={`p-3 rounded-xl ${tip.color} dark:bg-opacity-20`}>
+                                <tip.icon className="h-6 w-6" />
+                            </div>
+                            <CardTitle className="text-xl">
+                                {tip.title[language]}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                                {tip.content[language]}
+                            </p>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            <div className="mt-12 bg-slate-100 dark:bg-slate-800 rounded-2xl p-8 text-center">
+                <Lightbulb className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                <h3 className="text-xl font-bold mb-2">
+                    {language === 'es' ? '¿Sabías que?' : 'Did you know?'}
+                </h3>
+                <p className="text-slate-600 dark:text-slate-400">
+                    {language === 'es' 
+                        ? 'Pequeños "gastos hormiga" como el café diario o snacks pueden sumar hasta ₡500,000 al año. ¡Llevar tu propio almuerzo ahorra mucho!' 
+                        : 'Small "ant expenses" like daily coffee or snacks can add up to ₡500,000 a year. Bringing your own lunch saves a lot!'}
+                </p>
+            </div>
+        </div>
+    );
+}
