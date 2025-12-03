@@ -1,0 +1,309 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { base44 } from '@/api/base44Client';
+import { useQuery } from "@tanstack/react-query";
+import { TrendingUp, TrendingDown, Wallet, Plus, ArrowRight, ArrowDown, ArrowUp, HelpCircle, CreditCard } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { format } from "date-fns";
+import { es, enUS } from "date-fns/locale";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import TransactionForm from '@/components/TransactionForm';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+
+export default function Dashboard() {
+    const { t, formatMoney, language } = useApp();
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [showWelcome, setShowWelcome] = useState(false);
+
+    React.useEffect(() => {
+        const hasVisited = localStorage.getItem('hasVisited');
+        if (!hasVisited) {
+            setShowWelcome(true);
+            localStorage.setItem('hasVisited', 'true');
+        }
+    }, []);
+
+    // Fetch Transactions
+    const { data: transactions = [], isLoading } = useQuery({
+        queryKey: ['transactions'],
+        queryFn: () => base44.entities.Transaction.list({sort: {date: -1}, limit: 100}),
+        initialData: []
+    });
+
+    // Fetch Budgets
+    const { data: budgets = [] } = useQuery({
+        queryKey: ['budgets'],
+        queryFn: () => base44.entities.Budget.list(),
+        initialData: []
+    });
+
+    // Fetch Debts
+    const { data: debts = [] } = useQuery({
+        queryKey: ['debts'],
+        queryFn: () => base44.entities.Debt.list({ query: { status: 'active' } }),
+        initialData: []
+    });
+
+    const totalDebt = debts.reduce((sum, d) => sum + (d.total_amount - d.amount_paid), 0);
+
+    // Calculations
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    const monthTransactions = transactions.filter(tx => {
+        const txDate = new Date(tx.date);
+        return txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear;
+    });
+
+    const totalIncome = monthTransactions
+        .filter(tx => tx.type === 'income')
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    const totalExpenses = monthTransactions
+        .filter(tx => tx.type === 'expense')
+        .reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+    const balance = totalIncome - totalExpenses;
+    const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpenses) / totalIncome) * 100 : 0;
+
+    // Chart Data
+    const expenseCategories = monthTransactions
+        .filter(tx => tx.type === 'expense')
+        .reduce((acc, tx) => {
+            acc[tx.category] = (acc[tx.category] || 0) + tx.amount;
+            return acc;
+        }, {});
+
+    const pieData = Object.entries(expenseCategories).map(([name, value]) => ({ name, value }));
+    const COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#3b82f6', '#8b5cf6'];
+
+    // Category translations for chart
+    const catTrans = {
+        Food: { es: "Comida", en: "Food" },
+        Transport: { es: "Transporte", en: "Transport" },
+        Housing: { es: "Vivienda", en: "Housing" },
+        Entertainment: { es: "Entretenimiento", en: "Entertainment" },
+        Health: { es: "Salud", en: "Health" },
+        Other: { es: "Otro", en: "Other" }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                        {language === 'es' ? `Resumen de ${format(new Date(), 'MMMM', { locale: es })}` : `${format(new Date(), 'MMMM', { locale: enUS })} Overview`}
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400">
+                        {language === 'es' ? 'Bienvenido a tu control financiero.' : 'Welcome to your financial control.'}
+                    </p>
+                </div>
+                <Button 
+                    onClick={() => setIsFormOpen(true)} 
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 transition-all"
+                >
+                    <Plus className="mr-2 h-4 w-4" />
+                    {language === 'es' ? 'Nueva Transacción' : 'New Transaction'}
+                </Button>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-none shadow-lg">
+                    <CardContent className="p-6">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-emerald-100 text-sm font-medium mb-1">{language === 'es' ? 'Balance Total' : 'Total Balance'}</p>
+                                <h2 className="text-3xl font-bold">{formatMoney(balance)}</h2>
+                            </div>
+                            <div className="p-2 bg-white/20 rounded-lg">
+                                <Wallet className="h-6 w-6 text-white" />
+                            </div>
+                        </div>
+                        <div className="mt-4 flex items-center text-sm text-emerald-100">
+                            <span>{savingsRate.toFixed(1)}% {language === 'es' ? 'tasa de ahorro' : 'savings rate'}</span>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                    <CardContent className="p-6">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-slate-500 text-sm font-medium mb-1">{language === 'es' ? 'Ingresos' : 'Income'}</p>
+                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{formatMoney(totalIncome)}</h2>
+                            </div>
+                            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                <TrendingUp className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                    <CardContent className="p-6">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-slate-500 text-sm font-medium mb-1">{language === 'es' ? 'Gastos' : 'Expenses'}</p>
+                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{formatMoney(totalExpenses)}</h2>
+                            </div>
+                            <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                                <TrendingDown className="h-6 w-6 text-red-600 dark:text-red-400" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                    <CardContent className="p-6">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <p className="text-slate-500 text-sm font-medium mb-1">{language === 'es' ? 'Deuda Pendiente' : 'Pending Debt'}</p>
+                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{formatMoney(totalDebt)}</h2>
+                            </div>
+                            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                                <CreditCard className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Charts */}
+                <Card className="lg:col-span-2 dark:bg-slate-900">
+                    <CardHeader>
+                        <CardTitle>{language === 'es' ? 'Desglose de Gastos' : 'Expense Breakdown'}</CardTitle>
+                        <CardDescription>{language === 'es' ? 'Tus gastos por categoría este mes' : 'Your spending by category this month'}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        {pieData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={pieData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <XAxis type="number" hide />
+                                    <YAxis 
+                                        dataKey="name" 
+                                        type="category" 
+                                        width={100} 
+                                        tickFormatter={(val) => catTrans[val]?.[language] || val}
+                                        tick={{fill: '#64748b', fontSize: 12}}
+                                    />
+                                    <Tooltip 
+                                        formatter={(value) => formatMoney(value)}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar dataKey="value" fill="#10b981" radius={[0, 4, 4, 0]} barSize={30} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-slate-400">
+                                {language === 'es' ? 'No hay gastos registrados' : 'No expenses recorded'}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Recent Transactions */}
+                <Card className="dark:bg-slate-900">
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-lg">{language === 'es' ? 'Recientes' : 'Recent'}</CardTitle>
+                        <Link to={createPageUrl('Transactions')}>
+                            <Button variant="ghost" size="sm" className="text-xs">
+                                {language === 'es' ? 'Ver Todo' : 'View All'} <ArrowRight className="ml-1 h-3 w-3" />
+                            </Button>
+                        </Link>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {transactions.slice(0, 5).map((tx) => (
+                                <div key={tx.id} className="flex items-center justify-between group">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-full ${tx.type === 'income' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' : 'bg-red-100 text-red-600 dark:bg-red-900/30'}`}>
+                                            {tx.type === 'income' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-sm text-slate-900 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
+                                                {tx.description || (catTrans[tx.category]?.[language] || tx.category)}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                {format(new Date(tx.date), 'MMM d', { locale: language === 'es' ? es : enUS })} • {catTrans[tx.category]?.[language] || tx.category}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`font-semibold text-sm ${tx.type === 'income' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                                        {tx.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
+                                    </span>
+                                </div>
+                            ))}
+                            {transactions.length === 0 && (
+                                <p className="text-center text-sm text-slate-400 py-4">
+                                    {language === 'es' ? 'Sin transacciones recientes' : 'No recent transactions'}
+                                </p>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <TransactionForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} />
+
+            <Dialog open={showWelcome} onOpenChange={setShowWelcome}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl text-emerald-600">
+                            {language === 'es' ? '¡Bienvenido a MiPlata CR!' : 'Welcome to My Money CR!'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {language === 'es' 
+                                ? 'Tu compañero personal para el control financiero.' 
+                                : 'Your personal companion for financial control.'}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-blue-100 rounded-lg text-blue-600">
+                                <Plus className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold">{language === 'es' ? 'Registra Transacciones' : 'Track Transactions'}</h4>
+                                <p className="text-sm text-slate-500">
+                                    {language === 'es' ? 'Usa el botón "Nueva Transacción" para registrar tus gastos e ingresos.' : 'Use the "New Transaction" button to log expenses and income.'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+                                <Wallet className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold">{language === 'es' ? 'Establece Presupuestos' : 'Set Budgets'}</h4>
+                                <p className="text-sm text-slate-500">
+                                    {language === 'es' ? 'Ve a la sección de Presupuestos para definir límites mensuales.' : 'Go to the Budgets section to define monthly limits.'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
+                                <TrendingUp className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold">{language === 'es' ? 'Alcanza tus Metas' : 'Reach Your Goals'}</h4>
+                                <p className="text-sm text-slate-500">
+                                    {language === 'es' ? 'Crea metas de ahorro y visualiza tu progreso.' : 'Create savings goals and visualize your progress.'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setShowWelcome(false)} className="bg-emerald-600 text-white">
+                            {language === 'es' ? '¡Empezar!' : 'Get Started!'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
