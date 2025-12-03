@@ -1,0 +1,171 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { format } from "date-fns";
+import { es, enUS } from "date-fns/locale";
+import { Target, Plus, Trash2, Trophy, PiggyBank } from "lucide-react";
+
+export default function GoalsPage() {
+    const { t, formatMoney, language } = useApp();
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingGoal, setEditingGoal] = useState(null);
+    const queryClient = useQueryClient();
+
+    const { data: goals = [] } = useQuery({
+        queryKey: ['goals'],
+        queryFn: () => base44.entities.Goal.list(),
+        initialData: []
+    });
+
+    const createMutation = useMutation({
+        mutationFn: (data) => base44.entities.Goal.create(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['goals'] });
+            setIsFormOpen(false);
+        }
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: ({id, data}) => base44.entities.Goal.update(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['goals'] });
+            setEditingGoal(null);
+        }
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id) => base44.entities.Goal.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goals'] })
+    });
+
+    const handleAddAmount = (goal, amount) => {
+        updateMutation.mutate({
+            id: goal.id,
+            data: { current_amount: (goal.current_amount || 0) + parseFloat(amount) }
+        });
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('goals')}</h1>
+                <Button onClick={() => setIsFormOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+                    <Plus className="mr-2 h-4 w-4" /> {language === 'es' ? 'Nueva Meta' : 'New Goal'}
+                </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {goals.map((goal) => {
+                    const progress = Math.min((goal.current_amount / goal.target_amount) * 100, 100);
+                    return (
+                        <Card key={goal.id} className="dark:bg-slate-900 overflow-hidden group relative">
+                            <div className={`absolute top-0 left-0 w-2 h-full ${progress >= 100 ? 'bg-yellow-400' : 'bg-emerald-500'}`} />
+                            <CardHeader className="pb-2">
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="flex items-center gap-2">
+                                        {progress >= 100 ? <Trophy className="h-5 w-5 text-yellow-500" /> : <Target className="h-5 w-5 text-emerald-500" />}
+                                        {goal.title}
+                                    </CardTitle>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+                                        onClick={() => deleteMutation.mutate(goal.id)}
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-slate-500">{formatMoney(goal.current_amount)}</span>
+                                        <span className="font-bold">{formatMoney(goal.target_amount)}</span>
+                                    </div>
+                                    <Progress value={progress} className="h-3 bg-slate-100 dark:bg-slate-800" indicatorClassName={progress >= 100 ? 'bg-yellow-500' : 'bg-emerald-500'} />
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                    <span>{progress.toFixed(0)}%</span>
+                                    {goal.deadline && (
+                                        <span>{language === 'es' ? 'Meta:' : 'Due:'} {format(new Date(goal.deadline), 'MMM yyyy')}</span>
+                                    )}
+                                </div>
+                                <div className="pt-2 flex gap-2">
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className="flex-1"
+                                        onClick={() => {
+                                            const amount = prompt(language === 'es' ? 'Monto a agregar:' : 'Amount to add:');
+                                            if (amount && !isNaN(amount)) handleAddAmount(goal, amount);
+                                        }}
+                                    >
+                                        <PiggyBank className="mr-2 h-4 w-4 text-emerald-500" />
+                                        {language === 'es' ? 'Ahorrar' : 'Save'}
+                                    </Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+                {goals.length === 0 && (
+                    <div className="col-span-full flex flex-col items-center justify-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-dashed">
+                        <Target className="h-12 w-12 mb-4 opacity-50" />
+                        <p>{language === 'es' ? 'No hay metas de ahorro aún' : 'No savings goals yet'}</p>
+                        <Button variant="link" onClick={() => setIsFormOpen(true)}>
+                            {language === 'es' ? 'Crear tu primera meta' : 'Create your first goal'}
+                        </Button>
+                    </div>
+                )}
+            </div>
+
+            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{language === 'es' ? 'Nueva Meta de Ahorro' : 'New Savings Goal'}</DialogTitle>
+                    </DialogHeader>
+                    <form 
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const formData = new FormData(e.target);
+                            createMutation.mutate({
+                                title: formData.get('title'),
+                                target_amount: parseFloat(formData.get('target_amount')),
+                                current_amount: parseFloat(formData.get('current_amount') || 0),
+                                deadline: formData.get('deadline')
+                            });
+                        }} 
+                        className="space-y-4"
+                    >
+                        <div className="space-y-2">
+                            <Label>{language === 'es' ? 'Nombre de la Meta' : 'Goal Name'}</Label>
+                            <Input name="title" required placeholder={language === 'es' ? 'Ej: Carro Nuevo' : 'Ex: New Car'} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{language === 'es' ? 'Monto Objetivo' : 'Target Amount'}</Label>
+                            <Input name="target_amount" type="number" required min="0" placeholder="0.00" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{language === 'es' ? 'Ahorro Inicial' : 'Initial Savings'}</Label>
+                            <Input name="current_amount" type="number" min="0" placeholder="0.00" defaultValue="0" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{language === 'es' ? 'Fecha Objetivo' : 'Target Date'}</Label>
+                            <Input name="deadline" type="date" />
+                        </div>
+                        <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                            {language === 'es' ? 'Crear Meta' : 'Create Goal'}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
