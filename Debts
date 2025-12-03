@@ -1,0 +1,92 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { format } from "date-fns";
+import { es, enUS } from "date-fns/locale";
+import { Plus, CreditCard, Trash2, CheckCircle2, CalendarClock, Percent } from "lucide-react";
+
+export default function DebtsPage() {
+    const { t, formatMoney, language } = useApp();
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [paymentModal, setPaymentModal] = useState({ open: false, debtId: null });
+    const queryClient = useQueryClient();
+
+    const { data: debts = [] } = useQuery({
+        queryKey: ['debts'],
+        queryFn: () => base44.entities.Debt.list({ sort: { status: 1, due_date: 1 } }),
+        initialData: []
+    });
+
+    const createMutation = useMutation({
+        mutationFn: (data) => base44.entities.Debt.create(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['debts'] });
+            setIsFormOpen(false);
+        }
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: ({id, data}) => base44.entities.Debt.update(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['debts'] });
+            setPaymentModal({ open: false, debtId: null });
+        }
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id) => base44.entities.Debt.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['debts'] })
+    });
+
+    // Automatically mark as paid if amount_paid >= total_amount
+    const handlePayment = (debtId, amount) => {
+        const debt = debts.find(d => d.id === debtId);
+        if (!debt) return;
+
+        const newPaid = (debt.amount_paid || 0) + parseFloat(amount);
+        const isPaid = newPaid >= debt.total_amount;
+
+        updateMutation.mutate({
+            id: debtId,
+            data: { 
+                amount_paid: newPaid,
+                status: isPaid ? 'paid' : 'active'
+            }
+        });
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('debts')}</h1>
+                    <p className="text-slate-500">{language === 'es' ? 'Gestiona y elimina tus deudas' : 'Manage and eliminate your debts'}</p>
+                </div>
+                <Button onClick={() => setIsFormOpen(true)} className="bg-red-600 hover:bg-red-700">
+                    <Plus className="mr-2 h-4 w-4" /> {language === 'es' ? 'Nueva Deuda' : 'New Debt'}
+                </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {debts.map((debt) => {
+                    const progress = Math.min((debt.amount_paid / debt.total_amount) * 100, 100);
+                    const remaining = debt.total_amount - debt.amount_paid;
+                    const isPaid = debt.status === 'paid' || remaining <= 0;
+
+                    return (
+                        <Card key={debt.id} className={`dark:bg-slate-900 relative overflow-hidden ${isPaid ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20' : ''}`}>
+                            <CardHeader className="pb-2">
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="flex items-center gap-2 text-lg">
+                                        <CreditCard className={`h-5 w-5 ${isPaid ? 'text-emerald-500' : 'text-red-500'}`} />
+                                        {debt.name}
+                                    </CardTitle>
+                                    <div className="flex gap-1">
+ 
