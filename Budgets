@@ -1,0 +1,171 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { Plus, Pencil, AlertTriangle } from "lucide-react";
+import { format } from "date-fns";
+
+export default function BudgetsPage() {
+    const { t, formatMoney, language } = useApp();
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [selectedBudget, setSelectedBudget] = useState(null);
+    const queryClient = useQueryClient();
+
+    const currentMonthStr = format(new Date(), 'yyyy-MM');
+
+    // Fetch Budgets
+    const { data: budgets = [] } = useQuery({
+        queryKey: ['budgets'],
+        queryFn: () => base44.entities.Budget.list(),
+    });
+
+    // Fetch Transactions for current month to calculate spent
+    const { data: transactions = [] } = useQuery({
+        queryKey: ['transactions'],
+        queryFn: () => base44.entities.Transaction.list({limit: 500}),
+    });
+
+    const createMutation = useMutation({
+        mutationFn: (data) => base44.entities.Budget.create(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['budgets'] });
+            setIsFormOpen(false);
+        }
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: ({id, data}) => base44.entities.Budget.update(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['budgets'] });
+            setIsFormOpen(false);
+            setSelectedBudget(null);
+        }
+    });
+
+    // Calculate spent per category for current month
+    const categorySpent = transactions.reduce((acc, tx) => {
+        if (tx.type === 'expense' && tx.date.startsWith(currentMonthStr)) {
+            acc[tx.category] = (acc[tx.category] || 0) + tx.amount;
+        }
+        return acc;
+    }, {});
+
+    // Filter budgets for current month (or generic ones if we supported recurring, but sticking to simple)
+    const currentBudgets = budgets.filter(b => b.period === currentMonthStr);
+
+    const categories = ['Food', 'Transport', 'Housing', 'Entertainment', 'Health', 'Other'];
+    
+    const catTrans = {
+        Food: { es: "Comida", en: "Food" },
+        Transport: { es: "Transporte", en: "Transport" },
+        Housing: { es: "Vivienda", en: "Housing" },
+        Entertainment: { es: "Entretenimiento", en: "Entertainment" },
+        Health: { es: "Salud", en: "Health" },
+        Other: { es: "Otro", en: "Other" }
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = {
+            category: formData.get('category'),
+            limit_amount: parseFloat(formData.get('limit_amount')),
+            period: currentMonthStr
+        };
+
+        if (selectedBudget) {
+            updateMutation.mutate({ id: selectedBudget.id, data });
+        } else {
+            createMutation.mutate(data);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('budgets')}</h1>
+                    <p className="text-slate-500">{language === 'es' ? 'Planifica tus gastos mensuales' : 'Plan your monthly expenses'}</p>
+                </div>
+                <Button onClick={() => { setSelectedBudget(null); setIsFormOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700">
+                    <Plus className="mr-2 h-4 w-4" /> {language === 'es' ? 'Nuevo Presupuesto' : 'New Budget'}
+                </Button>
+            </div>
+
+            <div className="grid gap-6">
+                {currentBudgets.map((budget) => {
+                    const spent = categorySpent[budget.category] || 0;
+                    const percentage = Math.min((spent / budget.limit_amount) * 100, 100);
+                    const isOver = spent > budget.limit_amount;
+                    const isNear = percentage > 80 && !isOver;
+
+                    return (
+                        <Card key={budget.id} className={`dark:bg-slate-900 ${isOver ? 'border-red-200 dark:border-red-900/50' : ''}`}>
+                            <CardContent className="p-6">
+                                <div className="flex justify-between items-center mb-2">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-lg">{catTrans[budget.category]?.[language] || budget.category}</h3>
+                                        {isOver && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full flex items-center"><AlertTriangle className="h-3 w-3 mr-1" /> {language === 'es' ? 'Excedido' : 'Over Budget'}</span>}
+                                        {isNear && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">{language === 'es' ? 'Cerca del límite' : 'Near Limit'}</span>}
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedBudget(budget); setIsFormOpen(true); }}>
+                                        <Pencil className="h-4 w-4 text-slate-400" />
+                                    </Button>
+                                </div>
+                                
+                                <div className="mb-2 flex justify-between text-sm">
+                                    <span className={isOver ? 'text-red-600 font-bold' : 'text-slate-600'}>
+                                        {formatMoney(spent)}
+                                    </span>
+                                    <span className="text-slate-400">
+                                        / {formatMoney(budget.limit_amount)}
+                                    </span>
+                                </div>
+                                
+                                <Progress 
+                                    value={percentage} 
+                                    className="h-3" 
+                                    indicatorClassName={isOver ? 'bg-red-500' : isNear ? 'bg-yellow-500' : 'bg-emerald-500'}
+                                />
+                                <p className="text-xs text-slate-400 mt-2 text-right">
+                                    {percentage.toFixed(0)}% {language === 'es' ? 'utilizado' : 'used'}
+                                </p>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
+
+                {currentBudgets.length === 0 && (
+                    <div className="text-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-dashed">
+                        <p>{language === 'es' ? 'No has definido presupuestos para este mes.' : 'No budgets set for this month.'}</p>
+                    </div>
+                )}
+            </div>
+
+            <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{selectedBudget ? (language === 'es' ? 'Editar Presupuesto' : 'Edit Budget') : (language === 'es' ? 'Nuevo Presupuesto' : 'New Budget')}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>{language === 'es' ? 'Categoría' : 'Category'}</Label>
+                            <Select name="category" defaultValue={selectedBudget?.category || categories[0]} disabled={!!selectedBudget}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {categories.map(cat => (
+                                        <SelectItem key={cat} value={cat}>
+                                            {catTrans[cat]?.[language] || cat}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+ 
