@@ -1,0 +1,195 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { format, parseISO, isSameMonth } from "date-fns";
+import { es, enUS } from "date-fns/locale";
+import { Trash2, Download, Search, Filter, ArrowUp, ArrowDown } from "lucide-react";
+import TransactionForm from '@/components/TransactionForm';
+
+export default function TransactionsPage() {
+    const { t, formatMoney, language } = useApp();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [typeFilter, setTypeFilter] = useState('all');
+    const [monthFilter, setMonthFilter] = useState(format(new Date(), 'yyyy-MM'));
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const queryClient = useQueryClient();
+
+    const { data: transactions = [], isLoading } = useQuery({
+        queryKey: ['transactions'],
+        queryFn: () => base44.entities.Transaction.list({sort: {date: -1}, limit: 500}),
+        initialData: []
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id) => base44.entities.Transaction.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
+    });
+
+    const filteredTransactions = transactions.filter(tx => {
+        const matchesSearch = (tx.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = categoryFilter === 'all' || tx.category === categoryFilter;
+        const matchesType = typeFilter === 'all' || tx.type === typeFilter;
+        const matchesMonth = tx.date.startsWith(monthFilter);
+        return matchesSearch && matchesCategory && matchesType && matchesMonth;
+    });
+
+    const exportCSV = () => {
+        const headers = ['Date', 'Type', 'Category', 'Description', 'Amount'];
+        const csvContent = [
+            headers.join(','),
+            ...filteredTransactions.map(tx => [
+                tx.date,
+                tx.type,
+                tx.category,
+                `"${tx.description || ''}"`,
+                tx.amount
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `transactions_${monthFilter}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const categories = [
+        'Food', 'Transport', 'Housing', 'Entertainment', 'Health', 'Other',
+        'Salary', 'Freelance', 'Investment', 'Gift'
+    ];
+
+    const catTrans = {
+        Food: { es: "Comida", en: "Food" },
+        Transport: { es: "Transporte", en: "Transport" },
+        Housing: { es: "Vivienda", en: "Housing" },
+        Entertainment: { es: "Entretenimiento", en: "Entertainment" },
+        Health: { es: "Salud", en: "Health" },
+        Other: { es: "Otro", en: "Other" },
+        Salary: { es: "Salario", en: "Salary" },
+        Freelance: { es: "Freelance", en: "Freelance" },
+        Investment: { es: "Inversión", en: "Investment" },
+        Gift: { es: "Regalo", en: "Gift" }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('transactions')}</h1>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={exportCSV}>
+                        <Download className="mr-2 h-4 w-4" /> CSV
+                    </Button>
+                    <Button onClick={() => setIsFormOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+                        {language === 'es' ? 'Agregar' : 'Add'}
+                    </Button>
+                </div>
+            </div>
+
+            <Card className="dark:bg-slate-900">
+                <CardContent className="p-6 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
+                            <Input
+                                placeholder={language === 'es' ? "Buscar..." : "Search..."}
+                                className="pl-9"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <Select value={typeFilter} onValueChange={setTypeFilter}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">{language === 'es' ? 'Todos los Tipos' : 'All Types'}</SelectItem>
+                                <SelectItem value="income">{language === 'es' ? 'Ingresos' : 'Income'}</SelectItem>
+                                <SelectItem value="expense">{language === 'es' ? 'Gastos' : 'Expenses'}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">{language === 'es' ? 'Todas las Categorías' : 'All Categories'}</SelectItem>
+                                {categories.map(cat => (
+                                    <SelectItem key={cat} value={cat}>
+                                        {catTrans[cat]?.[language] || cat}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Input 
+                            type="month" 
+                            value={monthFilter} 
+                            onChange={(e) => setMonthFilter(e.target.value)} 
+                        />
+                    </div>
+
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>{language === 'es' ? 'Fecha' : 'Date'}</TableHead>
+                                    <TableHead>{language === 'es' ? 'Descripción' : 'Description'}</TableHead>
+                                    <TableHead>{language === 'es' ? 'Categoría' : 'Category'}</TableHead>
+                                    <TableHead className="text-right">{language === 'es' ? 'Monto' : 'Amount'}</TableHead>
+                                    <TableHead className="w-[50px]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredTransactions.map((tx) => (
+                                    <TableRow key={tx.id}>
+                                        <TableCell>
+                                            {format(parseISO(tx.date), 'PP', { locale: language === 'es' ? es : enUS })}
+                                        </TableCell>
+                                        <TableCell className="font-medium">{tx.description || '-'}</TableCell>
+                                        <TableCell>
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                                                {catTrans[tx.category]?.[language] || tx.category}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <span className={tx.type === 'income' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-red-600 dark:text-red-400 font-bold'}>
+                                                {tx.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={() => deleteMutation.mutate(tx.id)}
+                                                className="text-slate-400 hover:text-red-500"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {filteredTransactions.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                                            {language === 'es' ? 'No se encontraron transacciones' : 'No transactions found'}
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </CardContent>
+            </Card>
+            <TransactionForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} />
+        </div>
+    );
+}
