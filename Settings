@@ -1,0 +1,92 @@
+import React, { useState } from 'react';
+import { useApp } from '@/Layout';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Trash2, Plus, Save, Wand2 } from "lucide-react";
+
+export default function SettingsPage() {
+    const { t, language, formatMoney } = useApp();
+    const queryClient = useQueryClient();
+
+    // --- Categorization Rules ---
+    const { data: catRules = [] } = useQuery({
+        queryKey: ['catRules'],
+        queryFn: () => base44.entities.CategorizationRule.list(),
+    });
+
+    const createCatRule = useMutation({
+        mutationFn: (data) => base44.entities.CategorizationRule.create(data),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['catRules'] })
+    });
+
+    const deleteCatRule = useMutation({
+        mutationFn: (id) => base44.entities.CategorizationRule.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['catRules'] })
+    });
+
+    // --- Savings Rules ---
+    const { data: savingsRules = [] } = useQuery({
+        queryKey: ['savingsRules'],
+        queryFn: () => base44.entities.SavingsRule.list(),
+    });
+
+    const { data: goals = [] } = useQuery({
+        queryKey: ['goals'],
+        queryFn: () => base44.entities.Goal.list(),
+    });
+
+    const createSavingsRule = useMutation({
+        mutationFn: (data) => base44.entities.SavingsRule.create(data),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savingsRules'] })
+    });
+
+    const deleteSavingsRule = useMutation({
+        mutationFn: (id) => base44.entities.SavingsRule.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savingsRules'] })
+    });
+
+    const toggleSavingsRule = useMutation({
+        mutationFn: ({id, isActive}) => base44.entities.SavingsRule.update(id, { is_active: isActive }),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['savingsRules'] })
+    });
+
+    // Forms State
+    const [newCatRule, setNewCatRule] = useState({ keyword: '', category: 'Food', transaction_type: 'expense' });
+    const [newSavingsRule, setNewSavingsRule] = useState({ name: '', rule_type: 'percentage_of_income', value: 10, goal_id: '' });
+
+    const categories = {
+        expense: ['Food', 'Transport', 'Housing', 'Entertainment', 'Health', 'Other'],
+        income: ['Salary', 'Freelance', 'Investment', 'Gift', 'Other']
+    };
+    
+    const catTrans = {
+        Food: { es: "Comida", en: "Food" },
+        Transport: { es: "Transporte", en: "Transport" },
+        Housing: { es: "Vivienda", en: "Housing" },
+        Entertainment: { es: "Entretenimiento", en: "Entertainment" },
+        Health: { es: "Salud", en: "Health" },
+        Other: { es: "Otro", en: "Other" },
+        Salary: { es: "Salario", en: "Salary" },
+        Freelance: { es: "Freelance", en: "Freelance" },
+        Investment: { es: "Inversión", en: "Investment" },
+        Gift: { es: "Regalo", en: "Gift" }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('settings')}</h1>
+                <p className="text-slate-500">{language === 'es' ? 'Configura la automatización de tu app.' : 'Configure your app automation.'}</p>
+            </div>
+
+            <Tabs defaultValue="categorization" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="categorization">{language === 'es' ? 'Reglas de Categorización' : 'Categorization Rules'}</TabsTrigger>
+ 
